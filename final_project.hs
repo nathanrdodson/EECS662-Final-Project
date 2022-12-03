@@ -10,7 +10,7 @@ data FINLANG where
     Minus :: FINLANG -> FINLANG -> FINLANG
     Mult :: FINLANG -> FINLANG -> FINLANG
     Div :: FINLANG -> FINLANG -> FINLANG
-    Lambda :: String -> TYPELANG -> FINLANG -> FINLANG
+    Lambda :: String -> TLANG -> FINLANG -> FINLANG
     App :: FINLANG -> FINLANG -> FINLANG
     Bind :: String -> FINLANG -> FINLANG -> FINLANG
     If :: FINLANG -> FINLANG -> FINLANG -> FINLANG
@@ -20,16 +20,22 @@ data FINLANG where
     IsZero :: FINLANG -> FINLANG
     deriving (Show,Eq)
 
-data TYPELANG where
-    TNum :: TYPELANG
-    TBool :: TYPELANG
-    (:->:) :: TYPELANG -> TYPELANG -> TYPELANG
+data TLANG where
+    TNum :: TLANG
+    TBool :: TLANG
+    (:->:) :: TLANG -> TLANG -> TLANG
     deriving (Show,Eq)
 
-type Ctx = [(String, TYPELANG)]
-type Env = [(String, FINLANG)]
+data VLANG where
+    NumV :: Int -> VLANG
+    BooleanV :: Bool -> VLANG
+    ClosureV :: String -> FINLANG -> Env -> VLANG
+    deriving (Show,Eq)
 
-typeof :: Ctx -> FINLANG -> (Maybe TYPELANG)
+type Ctx = [(String, TLANG)]
+type Env = [(String, VLANG)]
+
+typeof :: Ctx -> FINLANG -> (Maybe TLANG)
 typeof g (Num x) =
     if x < 0
     then Nothing
@@ -99,5 +105,68 @@ typeof g (IsZero x) = do {
         return TBool
 }
 
-eval :: Env -> FINLANG -> (Maybe FINLANG)
-eval _ _ = Nothing
+eval :: Env -> FINLANG -> (Maybe VLANG)
+eval e (Num x) =
+    if x < 0
+    then Nothing
+    else Just (NumV x)
+eval e (Boolean x) = Just (BooleanV x)
+eval e (Id x) = (lookup x e)
+eval e (Plus x y) = do {
+    (NumV x') <- eval e x;
+    (NumV y') <- eval e y;
+        return (NumV (x' + y')) 
+}
+eval e (Minus x y) = do {
+    (NumV x') <- eval e x;
+    (NumV y') <- eval e y;
+        if (x' - y') < 0
+        then Nothing
+        else return (NumV (x' - y'))
+}
+eval e (Mult x y) = do {
+    (NumV x') <- eval e x;
+    (NumV y') <- eval e y;
+        return (NumV (x' * y'))
+}
+eval e (Div x y) = do {
+    (NumV x') <- eval e x;
+    (NumV y') <- eval e y;
+        if y' == 0
+        then Nothing
+        else return (NumV (x' `div` y'))
+}
+eval e (Lambda i d b) = Just (ClosureV i b e)
+eval e (App x y) = do {
+    (ClosureV i b e') <- eval e x;
+    y' <- eval e y;
+        eval ((i,y'):e') b
+}
+eval e (Bind x y z) = (eval e (App (Lambda x (TNum) z) y))
+eval e (If x y z) = do {
+    (BooleanV x') <- eval e x;
+    y' <- eval e y;
+    z' <- eval e z;
+        if x'
+        then Just y'
+        else Just z'
+}
+eval e (And x y) = do {
+    (BooleanV x') <- eval e x;
+    (BooleanV y') <- eval e y;
+        return (BooleanV (x' && y'))
+}
+eval e (Or x y) = do {
+    (BooleanV x') <- eval e x;
+    (BooleanV y') <- eval e y;
+        return (BooleanV (x' || y'))
+}
+eval e (Leq x y) = do {
+    (NumV x') <- eval e x;
+    (NumV y') <- eval e y;
+        return (BooleanV (x' <= y'))
+}
+eval e (IsZero x) = do {
+    (NumV x') <- eval e x;
+        return (BooleanV (x' == 0))
+}
