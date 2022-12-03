@@ -65,13 +65,15 @@ subst i v (IsZero x) = (IsZero (subst i v x))
 subst i v (If c t f) = (If (subst i v c) (subst i v t) (subst i v f))
 subst i v (Fix f) = Fix (subst i v f)
 
-typeof :: Ctx -> FINLANG -> (Maybe TLANG)
+
+-- Type inference functions
+typeof :: Ctx -> FINLANG -> Maybe TLANG
 typeof g (Num x) =
     if x < 0
     then Nothing
     else return TNum
-typeof g (Boolean x) = Just (TBool)
-typeof g (Id x) = (lookup x g)
+typeof g (Boolean x) = Just TBool
+typeof g (Id x) = lookup x g
 typeof g (Plus x y) = do {
     TNum <- typeof g x;
     TNum <- typeof g y;
@@ -140,13 +142,13 @@ typeof g (Fix x) = do {
 }
 typeof _ _ = Nothing
 
-eval :: Env -> FINLANG -> (Maybe VLANG)
+eval :: Env -> FINLANG -> Maybe VLANG
 eval e (Num x) =
     if x < 0
     then Nothing
     else Just (NumV x)
 eval e (Boolean x) = Just (BooleanV x)
-eval e (Id x) = (lookup x e)
+eval e (Id x) = lookup x e
 eval e (Plus x y) = do {
     (NumV x') <- eval e x;
     (NumV y') <- eval e y;
@@ -175,9 +177,11 @@ eval e (Lambda i d b) = Just (ClosureV i b e)
 eval e (App x y) = do {
     (ClosureV i b e') <- eval e x;
     y' <- eval e y;
-        eval ((i,y'):e') b
+    eval ((i,y'):e') b
 }
-eval e (Bind x y z) = (eval e (App (Lambda x (TNum) z) y))
+eval e (Bind x y z) = 
+    eval e (App 
+        (Lambda x TNum z) y)
 eval e (If x y z) = do {
     (BooleanV x') <- eval e x;
     y' <- eval e y;
@@ -206,24 +210,49 @@ eval e (IsZero x) = do {
         return (BooleanV (x' == 0))
 }
 eval e (Fix x) = do {
-    (ClosureV i b e) <- eval e x;
-    ty <- Just TNum;
-    eval e (subst i (Fix (Lambda i ty b)) b)
+    (ClosureV i b e') <- eval e x;
+    typ <- Just TNum;
+    eval e' (subst i (Fix (Lambda i typ b)) b)
 }
-eval e (List x y) = eval e (Lambda "x" (TBool) (If (Id "x") x y))
+eval e (List x y) = eval e (Lambda "x" TBool (If (Id "x") x y))
 eval e (Head x) = do {
     (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
         if s1 == s2
-        then eval ((s1,(BooleanV True)):e') (If (Id s1) t1 t2)
+        then eval ((s1, BooleanV True):e') (If (Id s1) t1 t2)
         else Nothing
 }
 eval e (Tail x) = do {
     (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
         if s1 == s2
-        then eval ((s1,(BooleanV False)):e') (If (Id s1) t1 t2)
+        then eval ((s1, BooleanV False):e') (If (Id s1) t1 t2)
         else Nothing
 }
 eval e (Prepend x y) = do {
     (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e y;
-        eval e' (Lambda s1 (TBool) (If (Id s1) x (List t1 t2)))
+        eval e' (Lambda s1 TBool (If (Id s1) x (List t1 t2)))
 }
+
+-- Interpreter function
+interp :: FINLANG -> Maybe VLANG
+interp a = 
+    let e = [] in
+    do {
+        typeof e a;
+        eval e a; 
+    }
+
+-- Test Suite
+-- Add tests to the tests variable and run main in GHCI
+test1 = Plus (Num 1) (Num 2)
+test2 = Bind "f" (Lambda "g" (TNum :->: TNum)
+                    (Lambda "x" TNum (If (IsZero (Id "x")) (Num 1)
+                        (Mult (Id "x")
+                            (App (Id "g")
+                                (Minus (Id "x")
+                                    (Num 1)))))))
+        (App (Fix (Id "f")) (Num 2))
+
+test = do { 
+    print(interp test1);
+    print(interp test2);
+ }
