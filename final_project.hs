@@ -18,6 +18,7 @@ data FINLANG where
     Or :: FINLANG -> FINLANG -> FINLANG
     Leq :: FINLANG -> FINLANG -> FINLANG
     IsZero :: FINLANG -> FINLANG
+    Fix :: FINLANG -> FINLANG
     List :: FINLANG -> FINLANG -> FINLANG
     Head :: FINLANG -> FINLANG
     Tail :: FINLANG -> FINLANG
@@ -39,6 +40,30 @@ data VLANG where
 
 type Ctx = [(String, TLANG)]
 type Env = [(String, VLANG)]
+
+subst :: String -> FINLANG -> FINLANG -> FINLANG
+subst i v (Num x) = (Num x)
+subst i v (Plus l r) = (Plus (subst i v l) (subst i v r))
+subst i v (Minus l r) = (Minus (subst i v l) (subst i v r))
+subst i v (Mult l r) = (Mult (subst i v l) (subst i v r))
+subst i v (Div l r) = (Div (subst i v l) (subst i v r))
+subst i v (Bind i' v' b') = 
+    if i == i' 
+    then (Bind i' (subst i v v') b') 
+    else (Bind i' (subst i v v') (subst i v b'))
+subst i v (Lambda i' t' b') = (Lambda i' t' (subst i v b'))
+subst i v (App f' a') = (App (subst i v f') (subst i v a') )
+subst i v (Id i') = 
+    if i == i' 
+    then v 
+    else (Id i')
+subst i v (Boolean x) = (Boolean x)
+subst i v (And l r) = (And (subst i v l) (subst i v r))
+subst i v (Or l r) = (Or (subst i v l) (subst i v r))
+subst i v (Leq l r) = (Leq (subst i v l) (subst i v r))
+subst i v (IsZero x) = (IsZero (subst i v x))
+subst i v (If c t f) = (If (subst i v c) (subst i v t) (subst i v f))
+subst i v (Fix f) = Fix (subst i v f)
 
 typeof :: Ctx -> FINLANG -> (Maybe TLANG)
 typeof g (Num x) =
@@ -109,6 +134,10 @@ typeof g (IsZero x) = do {
     TNum <- typeof g x;
         return TBool
 }
+typeof g (Fix x) = do {
+    (d :->: r) <- typeof g x;
+    return r;
+}
 typeof _ _ = Nothing
 
 eval :: Env -> FINLANG -> (Maybe VLANG)
@@ -175,6 +204,11 @@ eval e (Leq x y) = do {
 eval e (IsZero x) = do {
     (NumV x') <- eval e x;
         return (BooleanV (x' == 0))
+}
+eval e (Fix x) = do {
+    (ClosureV i b e) <- eval e x;
+    ty <- Just TNum;
+    eval e (subst i (Fix (Lambda i ty b)) b)
 }
 eval e (List x y) = eval e (Lambda "x" (TBool) (If (Id "x") x y))
 eval e (Head x) = do {
