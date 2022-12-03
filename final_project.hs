@@ -18,12 +18,17 @@ data FINLANG where
     Or :: FINLANG -> FINLANG -> FINLANG
     Leq :: FINLANG -> FINLANG -> FINLANG
     IsZero :: FINLANG -> FINLANG
+    List :: FINLANG -> FINLANG -> FINLANG
+    Head :: FINLANG -> FINLANG
+    Tail :: FINLANG -> FINLANG
+    Prepend :: FINLANG -> FINLANG -> FINLANG
     deriving (Show,Eq)
 
 data TLANG where
     TNum :: TLANG
     TBool :: TLANG
     (:->:) :: TLANG -> TLANG -> TLANG
+    TList :: TLANG
     deriving (Show,Eq)
 
 data VLANG where
@@ -104,6 +109,7 @@ typeof g (IsZero x) = do {
     TNum <- typeof g x;
         return TBool
 }
+typeof _ _ = Nothing
 
 eval :: Env -> FINLANG -> (Maybe VLANG)
 eval e (Num x) =
@@ -169,4 +175,21 @@ eval e (Leq x y) = do {
 eval e (IsZero x) = do {
     (NumV x') <- eval e x;
         return (BooleanV (x' == 0))
+}
+eval e (List x y) = eval e (Lambda "x" (TBool) (If (Id "x") x y))
+eval e (Head x) = do {
+    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
+        if s1 == s2
+        then eval ((s1,(BooleanV True)):e') (If (Id s1) t1 t2)
+        else Nothing
+}
+eval e (Tail x) = do {
+    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
+        if s1 == s2
+        then eval ((s1,(BooleanV False)):e') (If (Id s1) t1 t2)
+        else Nothing
+}
+eval e (Prepend x y) = do {
+    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e y;
+        eval e' (Lambda s1 (TBool) (If (Id s1) x (List t1 t2)))
 }
