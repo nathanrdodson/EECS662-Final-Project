@@ -29,13 +29,14 @@ data TLANG where
     TNum :: TLANG
     TBool :: TLANG
     (:->:) :: TLANG -> TLANG -> TLANG
-    TList :: TLANG
+    TList :: TLANG -> TLANG
     deriving (Show,Eq)
 
 data VLANG where
     NumV :: Int -> VLANG
     BooleanV :: Bool -> VLANG
     ClosureV :: String -> FINLANG -> Env -> VLANG
+    ListV :: VLANG -> VLANG -> VLANG
     deriving (Show,Eq)
 
 type Ctx = [(String, TLANG)]
@@ -140,6 +141,24 @@ typeof g (Fix x) = do {
     (d :->: r) <- typeof g x;
     return r;
 }
+typeof g (List x y) = do { --can also use this to prepend
+    tx <- typeof g x;
+    ty <- typeof g y;
+        if tx == ty || ty == TList tx
+        then return (TList tx) 
+        else Nothing
+}
+typeof g (Head x) = do {
+    TList t <- typeof g x;
+        return t
+}
+typeof g (Prepend x y) = do { --can only prepend a value of the same type as the list (cannot prepend, for example, (Tlist TNum) to (TList TNum), would only be able to prepend TNum)
+    TList t <- typeof g y;
+    tx <- typeof g x;
+        if t == tx
+        then return (TList t)
+        else Nothing
+}
 typeof _ _ = Nothing
 
 eval :: Env -> FINLANG -> Maybe VLANG
@@ -208,25 +227,29 @@ eval e (IsZero x) = do {
 }
 eval e (Fix x) = do {
     (ClosureV i b e') <- eval e x;
-    typ <- Just TNum;
-    eval e' (subst i (Fix (Lambda i typ b)) b)
+    --typ <- Just TNum;
+    eval e' (subst i (Fix (Lambda i TNum b)) b)
 }
-eval e (List x y) = eval e (Lambda "x" TBool (If (Id "x") x y))
+eval e (List x y) = do {
+    x' <- eval e x;
+    y' <- eval e y;
+        return (ListV x' y')
+}
 eval e (Head x) = do {
-    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
-        if s1 == s2
-        then eval ((s1, BooleanV True):e') (If (Id s1) t1 t2)
-        else Nothing
+    ListV a b <- eval e x;
+        return a 
 }
 eval e (Tail x) = do {
-    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
-        if s1 == s2
-        then eval ((s1, BooleanV False):e') (If (Id s1) t1 t2)
-        else Nothing
+    (ListV a b) <- eval e x;
+        return b
+    --(ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
+        --if s1 == s2
+        --then eval ((s1, BooleanV False):e') (If (Id s1) t1 t2)
+        --else Nothing
 }
 eval e (Prepend x y) = do {
-    (ClosureV s1 (If (Id s2) t1 t2) e') <- eval e y;
-        eval e' (Lambda s1 TBool (If (Id s1) x (List t1 t2)))
+    ListV a b <- eval e y;
+        eval e (List x y)
 }
 
 -- Interpreter function
@@ -247,11 +270,25 @@ test2 = (Bind "f" (Lambda "g" (TNum:->:TNum)
 
 test3 = (If (IsZero (Num 8)) (Plus (Num 1) (Num 2)) (Leq (Num 8) (Num 6)))
 test4 = (Leq (Num 8) (Num 6))
-
+test5 = (List (Num 1) (Num 2)) --should eval to Just (ListV (NumV 1) (NumV 2))
+test6 = (List (Num 1) (Boolean False)) --should eval to Nothing
+test7 = (Head (List (Num 1) (Num 2))) --should eval to Just NumV 1
+test8 = (Prepend (Num 8) (List (Num 3) (Num 2))) --should eval to (ListV (NumV 8) (ListV (NumV 3) (NumV 2)))
+test9 = (Prepend (Boolean False) (List (Num 3) (Num 2))) --should eval to Nothing
+test10 = (Head (Prepend (Num 8) (List (Num 3) (Num 2)))) --should eval to Just NumV 8
+test11 = (Tail (List (Num 1) (Num 2))) --should eval to Just NumV 2
+test12 = (Tail (Prepend (Num 8) (List (Num 1) (Num 2)))) --should eval to Just NumV 8
 
 test = do { 
     print(interp test1);
     print(interp test2);
     print(interp test3);
     print(interp test4);
+    print(interp test5);
+    print(interp test6);
+    print(interp test7);
+    print(interp test8);
+    print(interp test9);
+    print(interp test10);
+    print(interp test11);
  }
