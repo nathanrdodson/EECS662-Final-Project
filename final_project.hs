@@ -157,9 +157,9 @@ eval e (Plus x y) = do {
 eval e (Minus x y) = do {
     (NumV x') <- eval e x;
     (NumV y') <- eval e y;
-        if (x' - y') < 0
-        then Nothing
-        else return (NumV (x' - y'))
+    if (x' - y') < 0
+    then Nothing
+    else return (NumV (x' - y'))
 }
 eval e (Mult x y) = do {
     (NumV x') <- eval e x;
@@ -179,16 +179,13 @@ eval e (App x y) = do {
     y' <- eval e y;
     eval ((i,y'):e') b
 }
-eval e (Bind x y z) = 
-    eval e (App 
-        (Lambda x TNum z) y)
+eval e (Bind i x b) = do {
+    x' <- eval e x;
+    eval ((i,x'):e) b
+}
 eval e (If x y z) = do {
     (BooleanV x') <- eval e x;
-    y' <- eval e y;
-    z' <- eval e z;
-        if x'
-        then Just y'
-        else Just z'
+    if x' then (eval e y) else (eval e z)
 }
 eval e (And x y) = do {
     (BooleanV x') <- eval e x;
@@ -203,7 +200,7 @@ eval e (Or x y) = do {
 eval e (Leq x y) = do {
     (NumV x') <- eval e x;
     (NumV y') <- eval e y;
-        return (BooleanV (x' <= y'))
+    return (BooleanV (x' <= y'))
 }
 eval e (IsZero x) = do {
     (NumV x') <- eval e x;
@@ -244,15 +241,17 @@ interp a =
 -- Test Suite
 -- Add tests to the tests variable and run main in GHCI
 test1 = Plus (Num 1) (Num 2)
-test2 = Bind "f" (Lambda "g" (TNum :->: TNum)
-                    (Lambda "x" TNum (If (IsZero (Id "x")) (Num 1)
-                        (Mult (Id "x")
-                            (App (Id "g")
-                                (Minus (Id "x")
-                                    (Num 1)))))))
-        (App (Fix (Id "f")) (Num 2))
+test2 = (Bind "f" (Lambda "g" (TNum:->:TNum)
+            (Lambda "x" TNum (If (IsZero (Id "x")) (Num 1) (Mult (Id "x") (App (Id "g") (Minus (Id "x") (Num 1)))))))
+        (App (Fix (Id "f")) (Num 6)))
+
+test3 = (If (IsZero (Num 8)) (Plus (Num 1) (Num 2)) (Leq (Num 8) (Num 6)))
+test4 = (Leq (Num 8) (Num 6))
+
 
 test = do { 
     print(interp test1);
     print(interp test2);
+    print(interp test3);
+    print(interp test4);
  }
