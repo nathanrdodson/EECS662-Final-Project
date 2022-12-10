@@ -29,14 +29,14 @@ data TLANG where
     TNum :: TLANG
     TBool :: TLANG
     (:->:) :: TLANG -> TLANG -> TLANG
-    TList :: TLANG -> TLANG
+    TList :: Int -> TLANG -> TLANG
     deriving (Show,Eq)
 
 data VLANG where
     NumV :: Int -> VLANG
     BooleanV :: Bool -> VLANG
     ClosureV :: String -> FINLANG -> Env -> VLANG
-    ListV :: VLANG -> VLANG -> VLANG
+    ListV :: Int -> VLANG -> VLANG -> VLANG
     deriving (Show,Eq)
 
 type Ctx = [(String, TLANG)]
@@ -141,25 +141,31 @@ typeof g (Fix x) = do {
     (d :->: r) <- typeof g x;
     return r;
 }
-typeof g (List x y) = do { --can also use this to prepend
+typeof g (List x y) = do {
     tx <- typeof g x;
     ty <- typeof g y;
-        if tx == ty || ty == TList tx
-        then return (TList tx) 
+        if tx == ty
+        then return (TList 2 tx) 
         else Nothing
 }
 typeof g (Head x) = do {
-    TList t <- typeof g x;
+    TList s t <- typeof g x;
         return t
 }
+typeof g (Tail x) = do {
+    TList s t <- typeof g x;
+        if s == 2
+        then return t
+        else return (TList (s-1) t)
+}
 typeof g (Prepend x y) = do { --can only prepend a value of the same type as the list (cannot prepend, for example, (Tlist TNum) to (TList TNum), would only be able to prepend TNum)
-    TList t <- typeof g y;
+    TList s t <- typeof g y;
     tx <- typeof g x;
         if t == tx
-        then return (TList t)
+        then return (TList (s+1) t)
         else Nothing
 }
-typeof _ _ = Nothing
+--typeof _ _ = Nothing
 
 eval :: Env -> FINLANG -> Maybe VLANG
 eval e (Num x) =
@@ -233,23 +239,20 @@ eval e (Fix x) = do {
 eval e (List x y) = do {
     x' <- eval e x;
     y' <- eval e y;
-        return (ListV x' y')
+        return (ListV 2 x' y')
 }
 eval e (Head x) = do {
-    ListV a b <- eval e x;
+    ListV s a b <- eval e x;
         return a 
 }
 eval e (Tail x) = do {
-    (ListV a b) <- eval e x;
+    (ListV s a b) <- eval e x;
         return b
-    --(ClosureV s1 (If (Id s2) t1 t2) e') <- eval e x;
-        --if s1 == s2
-        --then eval ((s1, BooleanV False):e') (If (Id s1) t1 t2)
-        --else Nothing
 }
 eval e (Prepend x y) = do {
-    ListV a b <- eval e y;
-        eval e (List x y)
+    (ListV s a b) <- eval e y;
+    x' <- eval e x;
+        return (ListV (s+1) x' (ListV s a b))
 }
 
 -- Interpreter function
@@ -263,21 +266,21 @@ interp a =
 
 -- Test Suite
 -- Add tests to the tests variable and run main in GHCI
-test1 = Plus (Num 1) (Num 2)
+test1 = Plus (Num 1) (Num 2) --Just NumV 3
 test2 = (Bind "f" (Lambda "g" (TNum:->:TNum)
             (Lambda "x" TNum (If (IsZero (Id "x")) (Num 1) (Mult (Id "x") (App (Id "g") (Minus (Id "x") (Num 1)))))))
-        (App (Fix (Id "f")) (Num 6)))
+        (App (Fix (Id "f")) (Num 6))) --6! Just NumV 720
 
-test3 = (If (IsZero (Num 8)) (Plus (Num 1) (Num 2)) (Leq (Num 8) (Num 6)))
-test4 = (Leq (Num 8) (Num 6))
-test5 = (List (Num 1) (Num 2)) --should eval to Just (ListV (NumV 1) (NumV 2))
-test6 = (List (Num 1) (Boolean False)) --should eval to Nothing
-test7 = (Head (List (Num 1) (Num 2))) --should eval to Just NumV 1
-test8 = (Prepend (Num 8) (List (Num 3) (Num 2))) --should eval to (ListV (NumV 8) (ListV (NumV 3) (NumV 2)))
-test9 = (Prepend (Boolean False) (List (Num 3) (Num 2))) --should eval to Nothing
-test10 = (Head (Prepend (Num 8) (List (Num 3) (Num 2)))) --should eval to Just NumV 8
-test11 = (Tail (List (Num 1) (Num 2))) --should eval to Just NumV 2
-test12 = (Tail (Prepend (Num 8) (List (Num 1) (Num 2)))) --should eval to Just NumV 8
+test3 = (If (IsZero (Num 8)) (Plus (Num 1) (Num 2)) (Leq (Num 8) (Num 6))) --Nothing, can't be evaluated since the arguments are different types
+test4 = (Leq (Num 8) (Num 6)) --Just BooleanV False
+test5 = (List (Num 1) (Num 2)) --Just (ListV 2 (NumV 1) (NumV 2))
+test6 = (List (Num 1) (Boolean False)) --Nothing
+test7 = (Head (List (Num 1) (Num 2))) --Just NumV 1
+test8 = (Prepend (Num 8) (List (Num 3) (Num 2))) --Just (ListV 3 (NumV 8) (ListV (NumV 3) (NumV 2)))
+test9 = (Prepend (Boolean False) (List (Num 3) (Num 2))) --Nothing
+test10 = (Head (Prepend (Num 8) (List (Num 3) (Num 2)))) --Just NumV 8
+test11 = (Tail (List (Num 1) (Num 2))) --Just NumV 2
+test12 = (Tail (Prepend (Num 8) (List (Num 1) (Num 2)))) --Just (ListV 2 (NumV 1) (NumV 2))
 
 test = do { 
     print(interp test1);
@@ -291,4 +294,5 @@ test = do {
     print(interp test9);
     print(interp test10);
     print(interp test11);
+    print(interp test12);
  }
